@@ -8,9 +8,10 @@
 // Using a wrong config key is seen as a bug and should be corrected immediately.
 // This allows this package to skip error handling on Get() and Set() entirely.
 //
-// In short: This config  does a few things different than the ones I saw for Go.
-// Instead of providing numerous possible sources and formats to save your config
-// it simply relies on YAML. The focus is not on ultimate convinience but on:
+// In short: This config  does a few things different than the ones I saw for
+// Go.  Instead of providing numerous possible sources and formats to save your
+// config it simply relies on YAML out of the box. The focus is not on ultimate
+// convinience but on:
 //
 // - Providing meaningful validation and default values.
 //
@@ -263,7 +264,7 @@ type keyChangedEvent struct {
 	key string
 }
 
-// Config is a helper that is built around a YAML file.
+// Config is a helper that is built around a representation defined by a Encoder/Decoder.
 // It supports typed gets and sets, change notifications and
 // basic validation with defaults.
 type Config struct {
@@ -383,7 +384,7 @@ func (cfg *Config) Reload(dec Decoder) error {
 	return nil
 }
 
-// Save will write a YAML representation of the current config to `w`.
+// Save will write a representation defined by `enc` of the current config to `w`.
 func (cfg *Config) Save(enc Encoder) error {
 	cfg.mu.Lock()
 	defer cfg.mu.Unlock()
