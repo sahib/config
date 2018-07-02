@@ -24,8 +24,8 @@
 .. image:: http://img.shields.io/badge/license-GPLv3-4AC51C.svg?style=flat
    :target: https://www.gnu.org/licenses/quick-guide-gplv3.html.en
 
-config
-======
+``config``
+==========
 
 Go package for loading typesafe program configuration with validation and migration.
 
@@ -98,11 +98,11 @@ Examples
 
 - `Basic example.`_
 
-.. _`Basic example.`: https://github.com/sahib/brig/blob/develop/config/example_test.go#L51
+.. _`Basic example.`: https://github.com/sahib/config/blob/master/config/example_test.go#L51
 
 - `Migration example.`_
 
-.. _`Migration example.`: https://github.com/sahib/brig/blob/develop/config/example_test.go#L127
+.. _`Migration example.`: https://github.com/sahib/config/blob/master/config/example_test.go#L127
 
 LICENSE
 -------
