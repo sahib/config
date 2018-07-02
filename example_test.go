@@ -158,7 +158,7 @@ var ExampleDefaultsV1 = DefaultMapping{
 	},
 }
 
-func ExampleMigrate() {
+func ExampleMigrater() {
 	// This config package optionally supports versioned configs.
 	// Whenever you decide to change the layout of the config,
 	// you can bump the version and register a new migration func
