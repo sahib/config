@@ -104,6 +104,23 @@ Examples
 
 .. _`Migration example.`: https://github.com/sahib/config/blob/master/example_test.go#L127
 
+If the validation was not succesful, you can either error out directly or continue with defaults as fallback:
+
+.. code-block:: go
+
+    // Somewhere in your init code:
+    cfg, err := config.Open(config.NewYamlDecoder(fd), defaults)
+    if err != nil {
+        log.Errorf("Failed to user config. Continuing with defaults.")
+        cfg, err = config.Open(nil, defaults)
+        if err != nil {
+            // Something is really wrong. The defaults are probably wrong.
+            // This is a programmer error and should be catched early though.
+            log.Fatalf("Failed to load default config: %v", err)
+        }
+    }
+
+
 LICENSE
 -------
 
