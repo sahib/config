@@ -34,7 +34,7 @@ Motivation
 
 There are already multiple packages available for loading application
 configuration from a file. Viper_ is just one of the more popular ones. They
-mostly focus on being convinient to use and to support lots of differen
+mostly focus on being convinient to use and to support lots of different
 configuration sources (environment variables, network sources, files...). I
 found none though that focuses on loading configuration and validating the
 incoming values. Some libraries supported default values, but all of them
@@ -73,7 +73,7 @@ defined in Go's type system.
 **Change Notification and instant reloading:** The application can reload the
 configuration anytime and also register a func that will be called when a
 certain key changes. This allows longer running daemon processes to react
-instantly on config changes, if possible
+instantly on config changes, if possible.
 
 **Built-in Documentation:** You can write down documentation for your configuration
 as part of the defaults definition, including a hint if this key needs a restart of
