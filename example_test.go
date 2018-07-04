@@ -225,3 +225,37 @@ backend:
 	// ui:
 	//   show_tooltips: true
 }
+
+func ExampleMerge() {
+	baseYml := `# version: 0
+backend:
+  name: "the_good_one"
+`
+
+	overYml := `# version: 0
+backend:
+  workers: 50
+`
+	baseCfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), ExampleDefaultsV0)
+	if err != nil {
+		log.Fatalf("Failed to create base config: %v", err)
+	}
+
+	overCfg, err := Open(NewYamlDecoder(strings.NewReader(overYml)), ExampleDefaultsV0)
+	if err != nil {
+		log.Fatalf("Failed to create overlay config: %v", err)
+	}
+
+	if err := baseCfg.Merge(overCfg); err != nil {
+		log.Fatalf("Failed to merge base with overlay: %v", err)
+	}
+
+	// From base:
+	fmt.Println(baseCfg.Get("backend.name"))
+
+	// From overlay:
+	fmt.Println(baseCfg.Get("backend.workers"))
+
+	// Output: the_good_one
+	// 50
+}
