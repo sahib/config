@@ -67,7 +67,7 @@ func ExampleOpen() {
 	// "the_great_one" is no valid enum value (see defaults) Note that using a
 	// bad key is considered a programming error and will cause a panic. This
 	// is on purpose and might seem radical, but should help you to catch
-	// errors early in the developement.
+	// errors early in the development.
 	cfg.SetString("backend.name", "the_great_one")
 
 	// If you'd like to print an overview over all config keys,

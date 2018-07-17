@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	e "github.com/pkg/errors"
 )
@@ -621,6 +622,21 @@ func (cfg *Config) Float(key string) float64 {
 	return cfg.get(key).(float64)
 }
 
+// Duration returns the duration value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Duration(key string) time.Duration {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	s := cfg.get(key).(string)
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		panic(fmt.Sprintf("invalid duration: %v; use the duration validator!", s))
+	}
+
+	return d
+}
+
 ////////////
 
 // IsDefault will return true if this key was not explicitly set,
@@ -701,6 +717,12 @@ func (cfg *Config) SetInt(key string, val int64) error {
 // Note: This function will panic if the key does not exist.
 func (cfg *Config) SetFloat(key string, val float64) error {
 	return cfg.setLocked(key, val)
+}
+
+// SetDuration creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetDuration(key string, val time.Duration) error {
+	return cfg.setLocked(key, val.String())
 }
 
 // Set creates or sets the `val` at `key`.

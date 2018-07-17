@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -491,4 +492,27 @@ a:
 	err = baseCfg.Merge(overCfg)
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "refusing")
+}
+
+func TestDuration(t *testing.T) {
+	baseYml := `# version: 666
+duration: 5m20s
+`
+
+	defaults := DefaultMapping{
+		"duration": DefaultEntry{
+			Default:   "10m",
+			Validator: DurationValidator(),
+		},
+	}
+
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+
+	require.Equal(t, 5*time.Minute+20*time.Second, cfg.Duration("duration"))
+	cfg.SetDuration("duration", 20*time.Minute)
+	require.Equal(t, 20*time.Minute, cfg.Duration("duration"))
+
+	cfg.SetDuration("duration", time.Duration(0))
+	require.Equal(t, 0*time.Minute, cfg.Duration("duration"))
 }
