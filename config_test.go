@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -515,4 +516,65 @@ duration: 5m20s
 
 	cfg.SetDuration("duration", time.Duration(0))
 	require.Equal(t, 0*time.Minute, cfg.Duration("duration"))
+}
+
+func TestManyMarkerSections(t *testing.T) {
+	defaults := DefaultMapping{
+		"mounts": DefaultMapping{
+			"__many__": DefaultMapping{
+				"path": DefaultEntry{
+					Default: "",
+				},
+				"read_only": DefaultEntry{
+					Default: false,
+				},
+			},
+			"default": DefaultMapping{
+				"path": DefaultEntry{
+					Default: "",
+				},
+				"read_only": DefaultEntry{
+					Default: false,
+				},
+			},
+		},
+	}
+
+	baseYml := `# version: 666
+mounts:
+    default:
+        path: a
+    many_b:
+        path: b
+        read_only: true
+    many_c:
+        path: c
+`
+
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+
+	require.Equal(t, "a", cfg.Get("mounts.default.path"))
+	require.Equal(t, false, cfg.Get("mounts.default.read_only"))
+	require.Equal(t, "b", cfg.Get("mounts.many_b.path"))
+	require.Equal(t, true, cfg.Get("mounts.many_b.read_only"))
+	require.Equal(t, "c", cfg.Get("mounts.many_c.path"))
+	require.Equal(t, false, cfg.Get("mounts.many_c.read_only"))
+}
+
+func TestManyMarkerEntries(t *testing.T) {
+	defaults := DefaultMapping{
+		"intervals": DefaultMapping{
+			"__many__": DefaultEntry{
+				Default: "tricked you!",
+			},
+		},
+	}
+
+	baseYml := `# version: 666
+intervals: 7s
+`
+
+	_, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.NotNil(t, err)
 }

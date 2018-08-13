@@ -67,6 +67,8 @@ var (
 	typeFloatPattern = regexp.MustCompile(`float(32|64|)`)
 	// pattern for the version tag
 	versionTag = regexp.MustCompile(`^# version:\s*(\d+).*`)
+	// manyMarker is a special key in the default mapping
+	manyMarker = "__many__"
 )
 
 // recursive implementation of getDefaultByKey
@@ -75,9 +77,27 @@ func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
 		return nil
 	}
 
+	placeHolderFound := false
 	child, ok := defaults[keys[0]]
 	if !ok {
-		return nil
+		// The key might still be used if we have a __many__ entry.
+		// If not, it has to be a wrong key.
+		for defaultKeyVal := range defaults {
+			defaultKey, ok := defaultKeyVal.(string)
+			if !ok {
+				panic(fmt.Sprintf("programmer error: default key is not a string: %v", defaultKeyVal))
+			}
+
+			// We found a __many__ entry. Use it as validation base.
+			if defaultKey == manyMarker {
+				child = defaults[manyMarker]
+				placeHolderFound = true
+			}
+		}
+
+		if !placeHolderFound {
+			return nil
+		}
 	}
 
 	defaultEntry, ok := child.(DefaultEntry)
@@ -85,6 +105,10 @@ func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
 		// did we really consume all keys?
 		if len(keys) > 1 {
 			return nil
+		}
+
+		if placeHolderFound {
+			panic("__many__ used for default entries")
 		}
 
 		// scalar type, return immediately.
@@ -180,28 +204,46 @@ func generalizeType(val interface{}) interface{} {
 
 // fill up any not explicitly set key with default values
 func mergeDefaults(base map[interface{}]interface{}, overlay DefaultMapping, defaultKeys map[string]struct{}, prefix string) error {
-	for keyVal := range overlay {
-		key, ok := keyVal.(string)
+	for overlayKeyVal := range overlay {
+		overlayKey, ok := overlayKeyVal.(string)
 		if !ok {
-			return fmt.Errorf("config contains non string keys: %v", keyVal)
+			return fmt.Errorf("config contains non string keys: %v", overlayKeyVal)
 		}
 
-		switch overlayChild := overlay[key].(type) {
-		case DefaultMapping:
-			baseSection, ok := base[key].(map[interface{}]interface{})
-			if !ok {
-				baseSection = make(map[interface{}]interface{})
-				base[key] = baseSection
-			}
+		baseKeys := []string{}
+		if overlayKey == manyMarker {
+			for baseKeyVal := range base {
+				baseKey, ok := baseKeyVal.(string)
+				if !ok {
+					return fmt.Errorf("key in config is not a string: %v", baseKeyVal)
+				}
 
-			newPrefix := prefixKey(prefix, key)
-			if err := mergeDefaults(baseSection, overlayChild, defaultKeys, newPrefix); err != nil {
-				return err
+				if _, ok := overlay[baseKey]; !ok {
+					baseKeys = append(baseKeys, baseKey)
+				}
 			}
-		case DefaultEntry:
-			if _, ok := base[key]; !ok {
-				base[key] = generalizeType(overlayChild.Default)
-				defaultKeys[prefixKey(prefix, key)] = struct{}{}
+		} else {
+			baseKeys = append(baseKeys, overlayKey)
+		}
+
+		for _, baseKey := range baseKeys {
+			switch overlayChild := overlay[overlayKey].(type) {
+			case DefaultMapping:
+				baseSection, ok := base[baseKey].(map[interface{}]interface{})
+				if !ok {
+					baseSection = make(map[interface{}]interface{})
+					base[baseKey] = baseSection
+				}
+
+				newPrefix := prefixKey(prefix, baseKey)
+				if err := mergeDefaults(baseSection, overlayChild, defaultKeys, newPrefix); err != nil {
+					return err
+				}
+			case DefaultEntry:
+				if _, ok := base[baseKey]; !ok {
+					base[baseKey] = generalizeType(overlayChild.Default)
+					defaultKeys[prefixKey(prefix, baseKey)] = struct{}{}
+				}
 			}
 		}
 	}
