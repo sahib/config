@@ -65,6 +65,8 @@ var (
 	typeIntPattern = regexp.MustCompile(`u{0,1}int(64|32|16|8|)`)
 	// all types that we will cast into float64
 	typeFloatPattern = regexp.MustCompile(`float(32|64|)`)
+	// all types that are inside of a slice
+	typeSlicePattern = regexp.MustCompile(`^\[.*\]$`)
 	// pattern for the version tag
 	versionTag = regexp.MustCompile(`^# version:\s*(\d+).*`)
 	// manyMarker is a special key in the default mapping
@@ -78,8 +80,8 @@ func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
 	}
 
 	placeHolderFound := false
-	child, ok := defaults[keys[0]]
-	if !ok {
+	child, hasChild := defaults[keys[0]]
+	if !hasChild {
 		// The key might still be used if we have a __many__ entry.
 		// If not, it has to be a wrong key.
 		for defaultKeyVal := range defaults {
@@ -133,6 +135,10 @@ func getTypeOf(val interface{}) string {
 		return ""
 	}
 
+	if typ.Kind() == reflect.Slice {
+		return fmt.Sprintf("[%s]", typ.Elem().Name())
+	}
+
 	return typ.Name()
 }
 
@@ -144,6 +150,10 @@ func isCompatibleType(typeA, typeB string) bool {
 
 	if typeFloatPattern.MatchString(typeA) {
 		return typeFloatPattern.MatchString(typeB)
+	}
+
+	if typeSlicePattern.MatchString(typeA) {
+		return typeSlicePattern.MatchString(typeB)
 	}
 
 	return typeA == typeB
@@ -180,7 +190,7 @@ func keys(root map[interface{}]interface{}, prefix []string, fn func(section map
 	return nil
 }
 
-func generalizeType(val interface{}) interface{} {
+func generalizeScalarType(val interface{}) interface{} {
 	// Handle a few special cases here that come from go's type system.
 	// Doing something like this will lead to a panic:
 	//
@@ -197,6 +207,89 @@ func generalizeType(val interface{}) interface{} {
 	if typeFloatPattern.MatchString(getTypeOf(val)) {
 		destType := reflect.TypeOf(float64(0))
 		val = reflect.ValueOf(val).Convert(destType).Float()
+	}
+
+	return val
+}
+
+func generalizeType(val interface{}, defType string) (interface{}, error) {
+	if typ := reflect.TypeOf(val); typ.Kind() == reflect.Slice {
+		interfaces := val.([]interface{})
+		switch defType {
+		case "[string]":
+			results := []string{}
+			for _, inter := range interfaces {
+				val, ok := inter.(string)
+				if !ok {
+					return nil, fmt.Errorf("string list contanins non-strings: %v (%T)", inter, inter)
+				}
+
+				results = append(results, val)
+			}
+
+			return results, nil
+		case "[int]", "[int64]", "[int32]", "[int16]", "[int8]",
+			"[uint]", "[uint64]", "[uint32]", "[uint16]", "[uint8]":
+			results := []int64{}
+			for _, inter := range interfaces {
+				// always cast to int64:
+				inter = generalizeScalarType(inter)
+				val, ok := inter.(int64)
+				if !ok {
+					return nil, fmt.Errorf("int list contanins non-int64: %v (%T)", inter, inter)
+				}
+
+				results = append(results, val)
+			}
+
+			return results, nil
+		case "[float32]", "[float64]":
+			results := []float64{}
+			for _, inter := range interfaces {
+				inter = generalizeScalarType(inter)
+				val, ok := inter.(float64)
+				if !ok {
+					return nil, fmt.Errorf("float list contanins non-float: %v (%T)", inter, inter)
+				}
+
+				results = append(results, val)
+			}
+
+			return results, nil
+		case "[bool]":
+			results := []bool{}
+			for _, inter := range interfaces {
+				val, ok := inter.(bool)
+				if !ok {
+					return nil, fmt.Errorf("bool list contanins non-bool: %v (%T)", inter, inter)
+				}
+
+				results = append(results, val)
+			}
+
+			return results, nil
+		default:
+			return nil, fmt.Errorf("unsupported list type: %v", typ)
+		}
+	}
+
+	return generalizeScalarType(val), nil
+}
+
+func maybeMakeInterfaceList(val interface{}) interface{} {
+	typ := reflect.TypeOf(val)
+	if typ == nil {
+		return nil
+	}
+
+	if typ.Kind() == reflect.Slice {
+		rval := reflect.ValueOf(val)
+		results := []interface{}{}
+		for idx := 0; idx < rval.Len(); idx++ {
+			results = append(results, rval.Index(idx).Interface())
+		}
+
+		return results
 	}
 
 	return val
@@ -241,7 +334,15 @@ func mergeDefaults(base map[interface{}]interface{}, overlay DefaultMapping, def
 				}
 			case DefaultEntry:
 				if _, ok := base[baseKey]; !ok {
-					base[baseKey] = generalizeType(overlayChild.Default)
+					defType := getTypeOf(overlayChild.Default)
+					defaultVal := maybeMakeInterfaceList(overlayChild.Default)
+
+					fixedDefault, err := generalizeType(defaultVal, defType)
+					if err != nil {
+						return err
+					}
+
+					base[baseKey] = fixedDefault
 					defaultKeys[prefixKey(prefix, baseKey)] = struct{}{}
 				}
 			}
@@ -279,17 +380,20 @@ func validationChecker(root map[interface{}]interface{}, defaults DefaultMapping
 			)
 		}
 
-		child = generalizeType(child)
+		generalizedChild, err := generalizeType(child, defType)
+		if err != nil {
+			return err
+		}
 
 		// Do user defined validation:
 		if defaultEntry.Validator != nil {
-			if err := defaultEntry.Validator(child); err != nil {
+			if err := defaultEntry.Validator(generalizedChild); err != nil {
 				return err
 			}
 		}
 
 		// Valid key. Set the value:
-		section[lastKey] = child
+		section[lastKey] = generalizedChild
 		return nil
 	})
 
@@ -679,6 +783,63 @@ func (cfg *Config) Duration(key string) time.Duration {
 	return d
 }
 
+// Strings returns the string list value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Strings(key string) []string {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	return cfg.get(key).([]string)
+}
+
+// Ints returns the int list value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Ints(key string) []int64 {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	return cfg.get(key).([]int64)
+}
+
+// Floats returns the float list value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Floats(key string) []float64 {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	return cfg.get(key).([]float64)
+}
+
+// Bools returns the boolean list value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Bools(key string) []bool {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	return cfg.get(key).([]bool)
+}
+
+// Durations returns the duration value (or default) at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) Durations(key string) []time.Duration {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	strings := cfg.get(key).([]string)
+	durations := []time.Duration{}
+
+	for _, s := range strings {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			panic(fmt.Sprintf("invalid duration: %v; use the durations validator!", s))
+		}
+
+		durations = append(durations, d)
+	}
+
+	return durations
+}
+
 ////////////
 
 // IsDefault will return true if this key was not explicitly set,
@@ -765,6 +926,41 @@ func (cfg *Config) SetFloat(key string, val float64) error {
 // Note: This function will panic if the key does not exist.
 func (cfg *Config) SetDuration(key string, val time.Duration) error {
 	return cfg.setLocked(key, val.String())
+}
+
+// SetBools creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetBools(key string, val []bool) error {
+	return cfg.setLocked(key, val)
+}
+
+// SetStrings creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetStrings(key string, val []string) error {
+	return cfg.setLocked(key, val)
+}
+
+// SetInts creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetInts(key string, val []int64) error {
+	return cfg.setLocked(key, val)
+}
+
+// SetFloats creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetFloats(key string, val []float64) error {
+	return cfg.setLocked(key, val)
+}
+
+// SetDurations creates or sets the `val` at `key`.
+// Note: This function will panic if the key does not exist.
+func (cfg *Config) SetDurations(key string, val []time.Duration) error {
+	strings := []string{}
+	for _, d := range val {
+		strings = append(strings, d.String())
+	}
+
+	return cfg.setLocked(key, strings)
 }
 
 // Set creates or sets the `val` at `key`.

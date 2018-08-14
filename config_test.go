@@ -578,3 +578,123 @@ intervals: 7s
 	_, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
 	require.NotNil(t, err)
 }
+
+func TestListTypes(t *testing.T) {
+	defaults := DefaultMapping{
+		"strings": DefaultEntry{
+			Default: []string{"a", "b", "c"},
+		},
+		"ints": DefaultEntry{
+			Default: []int{1, 2, 3},
+		},
+		"floats": DefaultEntry{
+			Default: []float64{1.4},
+		},
+		"bools": DefaultEntry{
+			Default: []bool{true, false},
+		},
+	}
+
+	baseYml := `# version: 666
+strings: ["a", "b", "c", "d"]
+ints: [1, 2, 3, 4]
+floats: [1.9]
+bools: [false, true]
+`
+
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+
+	require.Equal(t, []string{"a", "b", "c", "d"}, cfg.Get("strings"))
+	require.Equal(t, []int64{1, 2, 3, 4}, cfg.Get("ints"))
+	require.Equal(t, []float64{1.9}, cfg.Get("floats"))
+	require.Equal(t, []bool{false, true}, cfg.Get("bools"))
+}
+
+func TestListTypesDefaults(t *testing.T) {
+	defaults := DefaultMapping{
+		"strings": DefaultEntry{
+			Default: []string{"a", "b", "c"},
+		},
+		"ints": DefaultEntry{
+			Default: []int{1, 2, 3},
+		},
+		"floats": DefaultEntry{
+			Default: []float64{1.4},
+		},
+		"bools": DefaultEntry{
+			Default: []bool{true, false},
+		},
+	}
+
+	baseYml := `# version: 666`
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+
+	require.Equal(t, []string{"a", "b", "c"}, cfg.Get("strings"))
+	require.Equal(t, []int64{1, 2, 3}, cfg.Get("ints"))
+	require.Equal(t, []float64{1.4}, cfg.Get("floats"))
+	require.Equal(t, []bool{true, false}, cfg.Get("bools"))
+}
+
+func TestListTypesBadInput(t *testing.T) {
+	defaults := DefaultMapping{
+		"strings": DefaultEntry{
+			Default: []string{"a", "b", "c"},
+		},
+		"ints": DefaultEntry{
+			Default: []int{1, 2, 3},
+		},
+		"floats": DefaultEntry{
+			Default: []float64{1.4},
+		},
+		"bools": DefaultEntry{
+			Default: []bool{true, false},
+		},
+	}
+
+	tcs := []string{
+		"strings: [1, 2, 3]",
+		"ints: [\"hello\"]",
+		"floats: [\"world\"]",
+		"bools: [\"true\"]",
+		"strings: 1",
+		"ints: ho",
+		"floats: ho",
+		"bools: 6",
+	}
+
+	for _, tc := range tcs {
+		baseYml := fmt.Sprintf("# version: 666\n%s", tc)
+		_, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+		require.NotNil(t, err)
+	}
+}
+
+func TestDurationList(t *testing.T) {
+	defaults := DefaultMapping{
+		"durations": DefaultEntry{
+			Default:   []string{"1s", "2s", "3s"},
+			Validator: ListValidator(DurationValidator()),
+		},
+	}
+
+	baseYml := `# version: 666`
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+	require.Equal(
+		t,
+		[]time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second},
+		cfg.Durations("durations"),
+	)
+
+	require.Nil(t, cfg.SetDurations(
+		"durations",
+		[]time.Duration{2 * time.Second, 4 * time.Second, 6 * time.Second},
+	))
+	require.Equal(
+		t,
+		[]time.Duration{2 * time.Second, 4 * time.Second, 6 * time.Second},
+		cfg.Durations("durations"),
+	)
+}
