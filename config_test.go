@@ -449,7 +449,7 @@ a:
     c: "world"
 `
 	baseCfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), TestDefaultsV0)
-	require.Nil(t, err)
+	equire.Nil(t, err)
 
 	overCfg, err := Open(NewYamlDecoder(strings.NewReader(overYml)), TestDefaultsV0)
 	require.Nil(t, err)
@@ -697,4 +697,99 @@ func TestDurationList(t *testing.T) {
 		[]time.Duration{2 * time.Second, 4 * time.Second, 6 * time.Second},
 		cfg.Durations("durations"),
 	)
+}
+
+func TestGetSetMany(t *testing.T) {
+	defaults := DefaultMapping{
+		"__many__": DefaultMapping{
+			"__many__": DefaultMapping{
+				"c": DefaultEntry{
+					Default: "x",
+				},
+			},
+		},
+	}
+
+	baseYml := `# version: 666
+something:
+  else:
+    c: "y"
+`
+
+	cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+	require.Nil(t, err)
+
+	require.Equal(t, "y", cfg.Get("something.else.c"))
+	require.Nil(t, cfg.Set("something.else.c", "z"))
+	require.Equal(t, "z", cfg.Get("something.else.c"))
+}
+
+func TestReset(t *testing.T) {
+	defaults := DefaultMapping{
+		"a": DefaultMapping{
+			"b": DefaultMapping{
+				"c": DefaultEntry{
+					Default: "x",
+				},
+			},
+			"__many__": DefaultMapping{
+				"val": DefaultEntry{
+					Default: 1,
+				},
+			},
+		},
+	}
+
+	baseYml := `# version: 666
+a:
+  b:
+    c: "y"
+`
+
+	t.Run("single-key", func(t *testing.T) {
+		cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+		require.Nil(t, err)
+
+		require.Equal(t, "y", cfg.String("a.b.c"))
+		require.Nil(t, cfg.Reset("a.b.c"))
+		require.Equal(t, "x", cfg.String("a.b.c"))
+	})
+
+	t.Run("__many__", func(t *testing.T) {
+		cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+		require.Nil(t, err)
+
+		require.Equal(t, 1, cfg.Get("a.many.val"))
+		require.Nil(t, cfg.Set("a.many.val", 5))
+		require.Equal(t, 5, cfg.Get("a.many.val"))
+
+		buf := &bytes.Buffer{}
+		cfg.Save(NewYamlEncoder(buf))
+		require.Contains(t, buf.String(), "many")
+		buf.Reset()
+
+		require.Nil(t, cfg.Reset("a.many"))
+		require.Equal(t, 1, cfg.Get("a.many.val"))
+
+		cfg.Save(NewYamlEncoder(buf))
+		require.NotContains(t, "many", buf.String())
+	})
+
+	t.Run("all", func(t *testing.T) {
+		cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+		require.Nil(t, err)
+
+		require.Equal(t, "y", cfg.String("a.b.c"))
+		require.Nil(t, cfg.Reset(""))
+		require.Equal(t, "x", cfg.String("a.b.c"))
+	})
+
+	t.Run("section", func(t *testing.T) {
+		cfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), defaults)
+		require.Nil(t, err)
+
+		require.Equal(t, "y", cfg.String("a.b.c"))
+		require.Nil(t, cfg.Reset("a.b"))
+		require.Equal(t, "x", cfg.String("a.b.c"))
+	})
 }

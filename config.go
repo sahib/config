@@ -73,17 +73,16 @@ var (
 	manyMarker = "__many__"
 )
 
-// recursive implementation of getDefaultByKey
-func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
+func getDefaultSectionByKeys(keys []string, defaults DefaultMapping) DefaultMapping {
 	if len(keys) == 0 {
-		return nil
+		return defaults
 	}
 
-	placeHolderFound := false
 	child, hasChild := defaults[keys[0]]
 	if !hasChild {
 		// The key might still be used if we have a __many__ entry.
 		// If not, it has to be a wrong key.
+		placeHolderFound := false
 		for defaultKeyVal := range defaults {
 			defaultKey, ok := defaultKeyVal.(string)
 			if !ok {
@@ -102,27 +101,46 @@ func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
 		}
 	}
 
-	defaultEntry, ok := child.(DefaultEntry)
-	if ok {
-		// did we really consume all keys?
-		if len(keys) > 1 {
-			return nil
-		}
-
-		if placeHolderFound {
-			panic("__many__ used for default entries")
-		}
-
-		// scalar type, return immediately.
-		return &defaultEntry
+	if child == nil {
+		return nil
 	}
 
 	section, ok := child.(DefaultMapping)
 	if !ok {
-		panic(fmt.Errorf("got bad type in default table: %T", child))
+		return nil
 	}
 
-	return getDefaultByKeys(keys[1:], section)
+	return getDefaultSectionByKeys(keys[1:], section)
+}
+
+// recursive implementation of getDefaultByKey
+func getDefaultByKeys(keys []string, defaults DefaultMapping) *DefaultEntry {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	section := getDefaultSectionByKeys(keys[:len(keys)-1], defaults)
+	if section == nil {
+		return nil
+	}
+
+	lastKey := keys[len(keys)-1]
+	if lastKey == manyMarker {
+		panic("__many__ used for default entries")
+	}
+
+	child, ok := section[lastKey]
+	if !ok {
+		return nil
+	}
+
+	defaultEntry, ok := child.(DefaultEntry)
+	if !ok {
+		return nil
+	}
+
+	// scalar type, return immediately.
+	return &defaultEntry
 }
 
 func getDefaultByKey(key string, defaults DefaultMapping) *DefaultEntry {
@@ -548,12 +566,12 @@ func (cfg *Config) Save(enc Encoder) error {
 ////////////
 
 // splitKey splits `key` into it's parent container and base key
-func (cfg *Config) splitKey(key string) (map[interface{}]interface{}, string) {
-	return splitKeyRecursive(strings.Split(key, "."), cfg.memory)
+func (cfg *Config) splitKey(key string, sectionAllowed bool) (map[interface{}]interface{}, string) {
+	return splitKeyRecursive(strings.Split(key, "."), cfg.memory, sectionAllowed)
 }
 
 // actual worker for splitKey
-func splitKeyRecursive(keys []string, root map[interface{}]interface{}) (map[interface{}]interface{}, string) {
+func splitKeyRecursive(keys []string, root map[interface{}]interface{}, sectionAllowed bool) (map[interface{}]interface{}, string) {
 	if len(keys) == 0 {
 		return nil, ""
 	}
@@ -573,14 +591,25 @@ func splitKeyRecursive(keys []string, root map[interface{}]interface{}) (map[int
 		return root, keys[0]
 	}
 
-	return splitKeyRecursive(keys[1:], section)
+	if sectionAllowed && len(keys) == 1 {
+		return root, keys[0]
+	}
+
+	return splitKeyRecursive(keys[1:], section, sectionAllowed)
 }
 
 // get is the worker for the higher level typed accessors
 func (cfg *Config) get(key string) interface{} {
 	key = prefixKey(cfg.section, key)
-	parent, base := cfg.splitKey(key)
+	parent, base := cfg.splitKey(key, false)
 	if parent == nil {
+		// It is not present in cfg.memory.
+		// Maybe it's an entry below __many__?
+		defEntry := getDefaultByKey(key, cfg.defaults)
+		if defEntry != nil {
+			return defEntry.Default
+		}
+
 		panic(fmt.Sprintf("bug: invalid config key: %v", key))
 	}
 
@@ -603,6 +632,29 @@ func (cfg *Config) gatherCallbacks(key string) []keyChangedEvent {
 	return callbacks
 }
 
+func (cfg *Config) punchHole(key []string, root map[interface{}]interface{}) (map[interface{}]interface{}, string, error) {
+	if len(key) == 0 {
+		return nil, "", nil
+	}
+
+	if len(key) == 1 {
+		return root, key[0], nil
+	}
+
+	child, ok := root[key[0]]
+	if !ok {
+		child = make(map[interface{}]interface{})
+		root[key[0]] = child
+	}
+
+	section, ok := child.(map[interface{}]interface{})
+	if !ok {
+		return nil, "", fmt.Errorf("trying to override value with section: %v", key)
+	}
+
+	return cfg.punchHole(key[1:], section)
+}
+
 // setLocked is worker behind the Set*() methods.
 func (cfg *Config) setLocked(key string, val interface{}) error {
 	cfg.mu.Lock()
@@ -619,9 +671,24 @@ func (cfg *Config) setLocked(key string, val interface{}) error {
 	// NOTE: the unlock is called before the other defer!
 	defer cfg.mu.Unlock()
 
-	parent, base := cfg.splitKey(key)
+	parent, base := cfg.splitKey(key, false)
 	if parent == nil {
-		panic(fmt.Sprintf("bug: invalid config key: %v", key))
+		// section, sectionBase := cfg.splitKey(key, true)
+		// mergeDefaults(, , cfg.defaultKeys, cfg.section)
+		def := getDefaultByKey(key, cfg.defaults)
+		if def != nil {
+			splitKey := strings.Split(key, ".")
+
+			var err error
+			parent, base, err = cfg.punchHole(splitKey, cfg.memory)
+			if err != nil {
+				return err
+			}
+
+			parent[base] = def.Default
+		} else {
+			panic(fmt.Sprintf("bug: invalid config key: %v", key))
+		}
 	}
 
 	defType := getTypeOf(parent[base])
@@ -629,7 +696,7 @@ func (cfg *Config) setLocked(key string, val interface{}) error {
 
 	if !isCompatibleType(defType, valType) {
 		return fmt.Errorf(
-			"wrong type in set for key `%v`: want: %v but got %v",
+			"wrong type in set for key `%v`: want: `%v` but got `%v`",
 			key, defType, valType,
 		)
 	}
@@ -637,6 +704,7 @@ func (cfg *Config) setLocked(key string, val interface{}) error {
 	// Remember that we've overwritten this key:
 	delete(cfg.defaultKeys, key)
 
+	// Check if something was changed. If not we do not need to notify anyone.
 	if reflect.DeepEqual(val, parent[base]) {
 		return nil
 	}
@@ -888,7 +956,7 @@ func (cfg *Config) Merge(other *Config) error {
 		// Only use callbacks if the key really changed:
 		if !reflect.DeepEqual(newVal, oldVal) {
 			callbacks = append(callbacks, cfg.gatherCallbacks(key)...)
-			parent, base := cfg.splitKey(key)
+			parent, base := cfg.splitKey(key, false)
 			parent[base] = newVal
 		}
 	}
@@ -1098,4 +1166,45 @@ func (cfg *Config) Version() Version {
 	defer cfg.mu.Unlock()
 
 	return cfg.version
+}
+
+// Reset reverts a key or a section to its defaults.
+// If key points to a value, only this value is reset.
+// If key points to a section, all keys in it are reset.
+// If key is an empty string, the whole config is reset to defaults.
+func (cfg *Config) Reset(key string) error {
+	cfg.mu.Lock()
+
+	key = prefixKey(cfg.section, key)
+	entry := getDefaultByKey(key, cfg.defaults)
+	if entry != nil {
+		// Key points to a value.
+		cfg.defaults[key] = struct{}{}
+		cfg.mu.Unlock()
+		return cfg.setLocked(key, entry.Default)
+	}
+
+	defer cfg.mu.Unlock()
+
+	if key == "" {
+		// The whole config needs to be reset:
+		cfg.memory = make(map[interface{}]interface{})
+		return mergeDefaults(cfg.memory, cfg.defaults, cfg.defaultKeys, cfg.section)
+	}
+
+	// We need to clear a section:
+	splitKey := strings.Split(key, ".")
+	defaultSection := getDefaultSectionByKeys(splitKey[:len(splitKey)-1], cfg.defaults)
+	if defaultSection == nil {
+		// TODO: panic?
+		return fmt.Errorf("no such section: %v", key)
+	}
+
+	parent, base := cfg.splitKey(key, true)
+	if parent == nil {
+		panic(fmt.Sprintf("bug: invalid config key: %v", key))
+	}
+
+	delete(parent, base)
+	return mergeDefaults(parent, defaultSection, cfg.defaultKeys, cfg.section)
 }
