@@ -449,7 +449,7 @@ a:
     c: "world"
 `
 	baseCfg, err := Open(NewYamlDecoder(strings.NewReader(baseYml)), TestDefaultsV0)
-	equire.Nil(t, err)
+	require.Nil(t, err)
 
 	overCfg, err := Open(NewYamlDecoder(strings.NewReader(overYml)), TestDefaultsV0)
 	require.Nil(t, err)

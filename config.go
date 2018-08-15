@@ -1172,6 +1172,10 @@ func (cfg *Config) Version() Version {
 // If key points to a value, only this value is reset.
 // If key points to a section, all keys in it are reset.
 // If key is an empty string, the whole config is reset to defaults.
+//
+// When calling reset on parts of the config that includes __many__ sections,
+// those will be totally cleared and won't be serialized when calling Save().
+// Retrieving values from those will yield default values as if they were not set.
 func (cfg *Config) Reset(key string) error {
 	cfg.mu.Lock()
 
