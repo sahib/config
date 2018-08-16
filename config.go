@@ -406,7 +406,7 @@ func validationChecker(
 	root map[interface{}]interface{},
 	defaults DefaultMapping,
 	defaultKeys map[string]struct{},
-	strictness Strictness
+	strictness Strictness,
 ) error {
 	err := keys(root, nil, func(section map[interface{}]interface{}, key []string) error {
 		// It's a scalar key. Let's run some diagnostics.
@@ -855,7 +855,7 @@ func (cfg *Config) ClearEvents() {
 
 ////////////
 
-func (cfg *Config) zeroize(key string, val, zero interface{}) interface{} {
+func (cfg *Config) checkZeroType(key string, val, zero interface{}) interface{} {
 	valTyp := reflect.TypeOf(val)
 	zeroTyp := reflect.TypeOf(zero)
 
@@ -902,7 +902,7 @@ func (cfg *Config) Bool(key string) bool {
 		return false
 	}
 
-	return cfg.zeroize(key, val, false).(bool)
+	return cfg.checkZeroType(key, val, false).(bool)
 }
 
 // String returns the string value (or default) at `key`.
@@ -917,7 +917,7 @@ func (cfg *Config) String(key string) string {
 		return ""
 	}
 
-	return cfg.zeroize(key, val, "").(string)
+	return cfg.checkZeroType(key, val, "").(string)
 }
 
 // Int returns the int value (or default) at `key`.
@@ -932,7 +932,7 @@ func (cfg *Config) Int(key string) int64 {
 		return 0
 	}
 
-	return cfg.zeroize(key, val, int64(0)).(int64)
+	return cfg.checkZeroType(key, val, int64(0)).(int64)
 }
 
 // Float returns the float value (or default) at `key`.
@@ -947,7 +947,7 @@ func (cfg *Config) Float(key string) float64 {
 		return 0
 	}
 
-	return cfg.zeroize(key, val, float64(0)).(float64)
+	return cfg.checkZeroType(key, val, float64(0)).(float64)
 }
 
 // Duration returns the duration value (or default) at `key`.
@@ -962,7 +962,7 @@ func (cfg *Config) Duration(key string) time.Duration {
 		return time.Duration(0)
 	}
 
-	s := cfg.zeroize(key, val, "").(string)
+	s := cfg.checkZeroType(key, val, "").(string)
 	d, err := time.ParseDuration(s)
 	if err != nil {
 		complain(
@@ -987,7 +987,7 @@ func (cfg *Config) Strings(key string) []string {
 		return nil
 	}
 
-	return cfg.zeroize(key, val, []string{}).([]string)
+	return cfg.checkZeroType(key, val, []string{}).([]string)
 }
 
 // Ints returns the int list value (or default) at `key`.
@@ -1002,7 +1002,7 @@ func (cfg *Config) Ints(key string) []int64 {
 		return nil
 	}
 
-	return cfg.zeroize(key, val, []int64{}).([]int64)
+	return cfg.checkZeroType(key, val, []int64{}).([]int64)
 }
 
 // Floats returns the float list value (or default) at `key`.
@@ -1017,7 +1017,7 @@ func (cfg *Config) Floats(key string) []float64 {
 		return nil
 	}
 
-	return cfg.zeroize(key, val, []float64{}).([]float64)
+	return cfg.checkZeroType(key, val, []float64{}).([]float64)
 }
 
 // Bools returns the boolean list value (or default) at `key`.
@@ -1032,7 +1032,7 @@ func (cfg *Config) Bools(key string) []bool {
 		return nil
 	}
 
-	return cfg.zeroize(key, val, []bool{}).([]bool)
+	return cfg.checkZeroType(key, val, []bool{}).([]bool)
 }
 
 // Durations returns the duration value (or default) at `key`.
@@ -1047,7 +1047,7 @@ func (cfg *Config) Durations(key string) []time.Duration {
 		return nil
 	}
 
-	strings := cfg.zeroize(key, val, []string{}).([]string)
+	strings := cfg.checkZeroType(key, val, []string{}).([]string)
 	durations := []time.Duration{}
 
 	for _, s := range strings {
