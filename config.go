@@ -1230,7 +1230,10 @@ func (cfg *Config) keys() []string {
 	err := keys(cfg.memory, nil, func(section map[interface{}]interface{}, key []string) error {
 		fullKey := strings.Join(key, ".")
 		if strings.HasPrefix(fullKey, cfg.section) {
-			allKeys = append(allKeys, strings.Join(key, "."))
+			if len(cfg.section) != 0 {
+				fullKey = fullKey[len(cfg.section)+1:]
+			}
+			allKeys = append(allKeys, fullKey)
 		}
 
 		return nil

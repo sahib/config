@@ -248,10 +248,10 @@ func TestSection(t *testing.T) {
 
 	childKeys := fsSec.Keys()
 	require.Equal(t, []string{
-		"fs.compress.default_algo",
-		"fs.sync.conflict_strategy",
-		"fs.sync.ignore_moved",
-		"fs.sync.ignore_removed",
+		"compress.default_algo",
+		"sync.conflict_strategy",
+		"sync.ignore_moved",
+		"sync.ignore_removed",
 	}, childKeys)
 }
 
@@ -839,4 +839,24 @@ func TestStrictness(t *testing.T) {
 		require.Equal(t, int64(0), cfg.Int("a.b"))
 	})
 
+}
+
+func TestSectionKeys(t *testing.T) {
+	defaults := DefaultMapping{
+		"a": DefaultMapping{
+			"b": DefaultMapping{
+				"c": DefaultEntry{
+					Default: "x",
+				},
+			},
+		},
+	}
+
+	cfg, err := Open(nil, defaults, StrictnessIgnore)
+	require.Nil(t, err)
+
+	require.Equal(t, []string{"a.b.c"}, cfg.Keys())
+
+	sec := cfg.Section("a")
+	require.Equal(t, []string{"b.c"}, sec.Keys())
 }
