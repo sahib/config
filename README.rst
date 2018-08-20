@@ -102,6 +102,22 @@ defaults which are again merged with user defined settings.
 
 **Reset to defaults:** Any part of the config can be reset to defaults at any time.
 
+Migrations
+----------
+
+Sometimes, you have to change the layout of your config or change default values.
+Since the configs of this module have version tags, this becomes quite simple.
+All you have to do is to write a migration function that transforms the old
+config to a new config - Take a look at the example below.
+
+When do you have to migrate?
+
+- When moving or removing a key or section.
+- When changing the default of an existing key.
+- When adding new keys that are pre-filled by some user-defined logic.
+
+If you're only adding new keys with constant defaults, there is no need for a migration.
+
 Examples
 --------
 
