@@ -3,34 +3,30 @@ package config
 import "os"
 
 // FromYamlFile creates a new config from the YAML file located at `path`
-func FromYamlFile(path string, defaults DefaultMapping, strictness Strictness) (cfg *Config, err error) {
-	fd, fErr := os.Open(path)
-	if fErr != nil {
-		return nil, fErr
+func FromYamlFile(path string, defaults DefaultMapping, strictness Strictness) (*Config, error) {
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
 
-	defer func() {
-		if clErr := fd.Close(); clErr != nil && err == nil {
-			err = clErr
-		}
-	}()
+	cfg, err := Open(NewYamlDecoder(fd), defaults, strictness)
+	if err != nil {
+		return nil, err
+	}
 
-	cfg, err = Open(NewYamlDecoder(fd), defaults, strictness)
-	return cfg, err
+	return cfg, fd.Close()
 }
 
 // ToYamlFile saves `cfg` as YAML at a file located at `path`.
-func ToYamlFile(path string, cfg *Config) (err error) {
-	fd, fErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if fErr != nil {
-		return fErr
+func ToYamlFile(path string, cfg *Config) error {
+	fd, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
 	}
 
-	defer func() {
-		if clErr := fd.Close(); clErr != nil && err == nil {
-			err = clErr
-		}
-	}()
+	if err := cfg.Save(NewYamlEncoder(fd)); err != nil {
+		return err
+	}
 
-	return cfg.Save(NewYamlEncoder(fd))
+	return fd.Close()
 }
