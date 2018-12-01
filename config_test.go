@@ -277,7 +277,7 @@ func TestSectionSignals(t *testing.T) {
 	require.Nil(t, fsSec.SetString("compress.default_algo", "lz4"))
 
 	require.Equal(t, 2, parentCallCount)
-	require.Equal(t, 1, childCallCount)
+	require.Equal(t, 2, childCallCount)
 
 	fsSec.RemoveEvent(childID)
 	cfg.RemoveEvent(parentID)

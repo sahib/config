@@ -1256,29 +1256,17 @@ func (cfg *Config) Section(section string) *Config {
 	cfg.mu.Lock()
 	defer cfg.mu.Unlock()
 
-	childCallbackCount := cfg.callbackCount
-	childChangeCallbacks := make(map[string]map[int]keyChangedEvent)
-
-	for key, bucket := range cfg.changeCallbacks {
-		childBucket := make(map[int]keyChangedEvent)
-		childChangeCallbacks[key] = childBucket
-		for _, callback := range bucket {
-			childBucket[childCallbackCount] = callback
-			childCallbackCount++
-		}
-	}
-
 	return &Config{
 		// mutex is shared with parent, since they protect the same memory.
 		mu:            cfg.mu,
 		section:       section,
-		callbackCount: childCallbackCount,
+		callbackCount: cfg.callbackCount,
 		// The data is shared, any set to a section will cause a set in the parent.
 		defaults: cfg.defaults,
 		memory:   cfg.memory,
 		// Sections may have own callbacks.
 		// The parent callbacks are still called though.
-		changeCallbacks: childChangeCallbacks,
+		changeCallbacks: cfg.changeCallbacks,
 		strictness:      cfg.strictness,
 	}
 }
