@@ -305,6 +305,18 @@ func TestCast(t *testing.T) {
 		"bool": DefaultEntry{
 			Default: false,
 		},
+		"string_slice": DefaultEntry{
+			Default: []string{"a", "b", "c"},
+		},
+		"int_slice": DefaultEntry{
+			Default: []int64{1, 2, 3},
+		},
+		"float_slice": DefaultEntry{
+			Default: []float64{1.0, 2.0, 3.0},
+		},
+		"bool_slice": DefaultEntry{
+			Default: []bool{true, false},
+		},
 	}
 
 	cfg, err := Open(nil, defaults, StrictnessPanic)
@@ -330,12 +342,74 @@ func TestCast(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, true, boolCast)
 
+	// String slice cast:
+	stringSliceCast, err := cfg.Cast("string_slice", "c ;; b ;; a")
+	require.Nil(t, err)
+	require.Equal(t, []string{"c", "b", "a"}, stringSliceCast)
+
+	// Int slice cast:
+	intSliceCast, err := cfg.Cast("int_slice", "3 ;; 2 ;; 1")
+	require.Nil(t, err)
+	require.Equal(t, []int64{3, 2, 1}, intSliceCast)
+
+	// Float slice cast:
+	floatSliceCast, err := cfg.Cast("float_slice", "3.5 ;; 2.25 ;; 1.0")
+	require.Nil(t, err)
+	require.Equal(t, []float64{3.5, 2.25, 1.0}, floatSliceCast)
+
+	// Bool slice cast:
+	boolSliceCast, err := cfg.Cast("bool_slice", "false ;; true")
+	require.Nil(t, err)
+	require.Equal(t, []bool{false, true}, boolSliceCast)
+
 	// Wrong cast types:
 	_, err = cfg.Cast("int", "im a string")
 	require.NotNil(t, err)
 
 	_, err = cfg.Cast("int", "2.0")
 	require.NotNil(t, err)
+}
+
+func TestUncast(t *testing.T) {
+	defaults := DefaultMapping{
+		"string": DefaultEntry{
+			Default: "a",
+		},
+		"int": DefaultEntry{
+			Default: 2,
+		},
+		"float": DefaultEntry{
+			Default: 3.0,
+		},
+		"bool": DefaultEntry{
+			Default: false,
+		},
+		"string_slice": DefaultEntry{
+			Default: []string{"a", "b", "c"},
+		},
+		"int_slice": DefaultEntry{
+			Default: []int64{1, 2, 3},
+		},
+		"float_slice": DefaultEntry{
+			Default: []float64{1.0, 2.5, 3.0},
+		},
+		"bool_slice": DefaultEntry{
+			Default: []bool{true, false},
+		},
+	}
+
+	cfg, err := Open(nil, defaults, StrictnessPanic)
+	require.Nil(t, err)
+
+	require.Equal(t, "a ;; b ;; c", cfg.Uncast("string_slice"))
+	require.Equal(t, "1 ;; 2 ;; 3", cfg.Uncast("int_slice"))
+	require.Equal(t, "1 ;; 2.5 ;; 3", cfg.Uncast("float_slice"))
+	require.Equal(t, "true ;; false", cfg.Uncast("bool_slice"))
+
+	require.Equal(t, "a", cfg.Uncast("string"))
+	require.Equal(t, "2", cfg.Uncast("int"))
+	require.Equal(t, "3", cfg.Uncast("float"))
+	require.Equal(t, "false", cfg.Uncast("bool"))
 }
 
 func configMustEquals(t *testing.T, aCfg, bCfg *Config) {

@@ -1281,6 +1281,59 @@ func (cfg *Config) IsValidKey(key string) bool {
 	return getDefaultByKey(key, cfg.defaults, cfg.strictness) != nil
 }
 
+const sliceSeparator = " ;; "
+
+func castStringSlice(val string) ([]string, error) {
+	res := []string{}
+	for _, val := range strings.Split(val, sliceSeparator) {
+		res = append(res, val)
+	}
+
+	return res, nil
+}
+
+func castIntSlice(val string) ([]int64, error) {
+	res := []int64{}
+	for _, val := range strings.Split(val, sliceSeparator) {
+		conv, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, conv)
+	}
+
+	return res, nil
+}
+
+func castFloatSlice(val string) ([]float64, error) {
+	res := []float64{}
+	for _, val := range strings.Split(val, sliceSeparator) {
+		conv, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, conv)
+	}
+
+	return res, nil
+}
+
+func castBoolSlice(val string) ([]bool, error) {
+	res := []bool{}
+	for _, val := range strings.Split(val, sliceSeparator) {
+		conv, err := strconv.ParseBool(val)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, conv)
+	}
+
+	return res, nil
+}
+
 // Cast takes `val` and reads the type of `key`.  It then tries to convert it
 // to one of the supported types (and possibly fails due to that)
 //
@@ -1308,9 +1361,65 @@ func (cfg *Config) Cast(key, val string) (interface{}, error) {
 		return strconv.ParseBool(val)
 	case string:
 		return val, nil
+	case []int, []int16, []int32, []int64, []uint, []uint16, []uint32, []uint64:
+		return castIntSlice(val)
+	case []float32, []float64:
+		return castFloatSlice(val)
+	case []bool:
+		return castBoolSlice(val)
+	case []string:
+		return castStringSlice(val)
 	}
 
 	return nil, nil
+}
+
+// Uncast is the opposite of Cast. It works like Get(), but always returns
+// a stringified version of a value, even in case of slices. The representation
+// returned by Uncast() can be later read in again by using Cast().
+//
+// Cast() and Uncast() are mainly useful in systems where you can only use strings,
+// e.g. when building an API between different programming languages.
+// Note: Slice items are separated by " ;; ".
+func (cfg *Config) Uncast(key string) string {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	fullKey := prefixKey(cfg.section, key)
+	entry := getDefaultByKey(fullKey, cfg.defaults, cfg.strictness)
+	if entry == nil {
+		msg := fmt.Sprintf("bug: invalid config key: %v", fullKey)
+		complain(msg, cfg.strictness)
+		return ""
+	}
+
+	switch entry.Default.(type) {
+	case []int, []int16, []int32, []int64, []uint, []uint16, []uint32, []uint64:
+		res := []string{}
+		for _, val := range cfg.get(key).([]int64) {
+			res = append(res, strconv.FormatInt(val, 10))
+		}
+
+		return strings.Join(res, sliceSeparator)
+	case []float32, []float64:
+		res := []string{}
+		for _, val := range cfg.get(key).([]float64) {
+			res = append(res, strconv.FormatFloat(val, 'f', -1, 64))
+		}
+
+		return strings.Join(res, sliceSeparator)
+	case []bool:
+		res := []string{}
+		for _, val := range cfg.get(key).([]bool) {
+			res = append(res, strconv.FormatBool(val))
+		}
+
+		return strings.Join(res, sliceSeparator)
+	case []string:
+		return strings.Join(cfg.get(key).([]string), sliceSeparator)
+	}
+
+	return fmt.Sprintf("%v", cfg.get(key))
 }
 
 // Version returns the version of the config The initial version is always 0.
