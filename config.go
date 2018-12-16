@@ -194,11 +194,11 @@ func getTypeOf(val interface{}) string {
 func isCompatibleType(typeA, typeB string) bool {
 	// Be a bit more tolerant regarding integer values.
 	if typeIntPattern.MatchString(typeA) {
-		return typeIntPattern.MatchString(typeB)
+		return typeFloatPattern.MatchString(typeB) || typeIntPattern.MatchString(typeB)
 	}
 
 	if typeFloatPattern.MatchString(typeA) {
-		return typeFloatPattern.MatchString(typeB)
+		return typeFloatPattern.MatchString(typeB) || typeIntPattern.MatchString(typeB)
 	}
 
 	if typeSlicePattern.MatchString(typeA) {
